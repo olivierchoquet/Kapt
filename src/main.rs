@@ -1,17 +1,23 @@
+mod icon;
+mod tray;
+
 use std::os::fd::AsRawFd;
-use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
 use ashpd::desktop::{
-    global_shortcuts::{Activated, GlobalShortcuts, NewShortcut},
+    global_shortcuts::{GlobalShortcuts, NewShortcut},
     screencast::{CursorMode, Screencast, SourceType},
     PersistMode,
 };
-use futures_util::{stream, Stream, StreamExt};
+use futures_util::StreamExt;
 use gst::prelude::*;
 use gstreamer as gst;
+use ksni::TrayMethods;
+use tokio::sync::mpsc::{self, UnboundedSender};
+
+use tray::{Command, KaptTray};
 
 /// Application ID registered with the portals (needed by KDE to bind global shortcuts).
 const APP_ID: &str = "io.github.olivierchoquet.Kapt";
@@ -105,7 +111,8 @@ fn install_pause_probe(pipeline: &gst::Pipeline, state: Arc<Mutex<PauseState>>) 
 }
 
 /// Switches between recording and paused, using the pipeline running time.
-fn toggle_pause(pipeline: &gst::Pipeline, state: &Mutex<PauseState>) -> Result<()> {
+/// Returns `true` if the recording is now paused.
+fn toggle_pause(pipeline: &gst::Pipeline, state: &Mutex<PauseState>) -> Result<bool> {
     let now = pipeline
         .current_running_time()
         .context("the pipeline has no running time")?;
@@ -124,15 +131,13 @@ fn toggle_pause(pipeline: &gst::Pipeline, state: &Mutex<PauseState>) -> Result<(
         state.paused = true;
         println!("⏸ Paused");
     }
-    Ok(())
+    Ok(state.paused)
 }
 
-/// Activation events of the bound global shortcuts.
-type ShortcutEvents = Pin<Box<dyn Stream<Item = Activated> + Send>>;
-
-/// Binds the pause/resume and stop global shortcuts through the GlobalShortcuts portal.
+/// Binds the pause/resume and stop global shortcuts through the GlobalShortcuts portal,
+/// then forwards their activations as commands to the main loop.
 /// The first time, KDE asks the user to confirm (or change) the key combinations.
-async fn bind_shortcuts() -> Result<ShortcutEvents> {
+async fn bind_shortcuts(commands: UnboundedSender<Command>) -> Result<()> {
     let proxy = GlobalShortcuts::new().await?;
     let session = proxy.create_session().await?;
     let shortcuts = [
@@ -153,14 +158,23 @@ async fn bind_shortcuts() -> Result<ShortcutEvents> {
         );
     }
 
-    let events = proxy.receive_activated().await?;
-    // The proxy and session must stay alive as long as the shortcuts are used:
-    // keep them inside the stream.
-    let events = events.map(move |event| {
+    let mut events = proxy.receive_activated().await?;
+    // The task owns the proxy and session, which must stay alive as long as
+    // the shortcuts are used
+    tokio::spawn(async move {
         let _keep_alive = (&proxy, &session);
-        event
+        while let Some(event) = events.next().await {
+            let command = match event.shortcut_id() {
+                SHORTCUT_PAUSE => Command::TogglePause,
+                SHORTCUT_STOP => Command::Stop,
+                _ => continue,
+            };
+            if commands.send(command).is_err() {
+                break; // main loop finished
+            }
+        }
     });
-    Ok(Box::pin(events))
+    Ok(())
 }
 
 #[tokio::main]
@@ -174,16 +188,15 @@ async fn main() -> Result<()> {
         eprintln!("warning: cannot register with the portals: {err}");
     }
 
+    // Commands from the global shortcuts and the tray icon
+    let (commands, mut command_rx) = mpsc::unbounded_channel();
+
     // Global shortcuts are optional: without them, recording still works
-    let mut shortcut_events = match bind_shortcuts().await {
-        Ok(events) => events,
-        Err(err) => {
-            eprintln!(
-                "warning: global shortcuts unavailable, pause and stop shortcuts disabled: {err:#}"
-            );
-            Box::pin(stream::pending())
-        }
-    };
+    if let Err(err) = bind_shortcuts(commands.clone()).await {
+        eprintln!(
+            "warning: global shortcuts unavailable, pause and stop shortcuts disabled: {err:#}"
+        );
+    }
 
     // 1. Ask the portal for permission to capture the screen
     let proxy = Screencast::new().await?;
@@ -239,19 +252,30 @@ async fn main() -> Result<()> {
     pipeline.set_state(gst::State::Playing)?;
     println!("Recording to {output}… Press Ctrl+C to stop.");
 
-    // 4. Record until Ctrl+C or the stop shortcut, watching for errors and pause/resume
+    // Tray icon showing the recording state; optional as well
+    let tray = match KaptTray::new(output.to_string(), commands).spawn().await {
+        Ok(handle) => Some(handle),
+        Err(err) => {
+            eprintln!("warning: cannot show the tray icon: {err}");
+            None
+        }
+    };
+
+    // 4. Record until Ctrl+C or a stop command, watching for errors and pause/resume
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
     loop {
         tokio::select! {
             _ = &mut ctrl_c => break,
-            Some(event) = shortcut_events.next() => {
-                match event.shortcut_id() {
-                    SHORTCUT_PAUSE => toggle_pause(&pipeline, &pause_state)?,
-                    SHORTCUT_STOP => break,
-                    _ => {}
+            Some(command) = command_rx.recv() => match command {
+                Command::TogglePause => {
+                    let paused = toggle_pause(&pipeline, &pause_state)?;
+                    if let Some(tray) = &tray {
+                        tray.update(|tray| tray.paused = paused).await;
+                    }
                 }
-            }
+                Command::Stop => break,
+            },
             _ = tokio::time::sleep(Duration::from_millis(100)) => {
                 if let Some(msg) = bus.pop_filtered(&[gst::MessageType::Error]) {
                     if let gst::MessageView::Error(err) = msg.view() {
@@ -272,6 +296,9 @@ async fn main() -> Result<()> {
     );
     pipeline.set_state(gst::State::Null)?;
 
+    if let Some(tray) = tray {
+        tray.shutdown().await;
+    }
     drop(fd); // keep the PipeWire connection open until here
     println!("Done: {output}");
     Ok(())

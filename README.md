@@ -55,7 +55,7 @@ cargo build --release
 ```
 
 1. KDE shows a dialog: pick a screen or a window.
-2. Recording starts into a file named after the start time (e.g. `2026-10-18_14-32-05_kapt.mkv`), in the current directory.
+2. Recording starts into a file named after the start time (e.g. `2026-10-18_14-32-05_kapt.mkv`), in the current directory. A tray icon shows the state: a red square with a white "K" while recording, an orange square with pause bars while paused. Click it to pause/resume, or use its menu to stop.
 3. Press **Meta+Shift+P** (global shortcut, works from any window) to pause or resume: paused parts are cut from the video.
 4. Press **Meta+Shift+X** (global shortcut) or **Ctrl+C** in the terminal to stop.
 
