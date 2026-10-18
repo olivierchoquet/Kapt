@@ -141,4 +141,4 @@ Check that the portal is running: `systemctl --user status xdg-desktop-portal xd
 
 ## License
 
-To be decided (for example GPL-3.0-or-later, like most KDE applications).
+kapt is free software, licensed under the [GNU General Public License v3.0 or later](LICENSE) (GPL-3.0-or-later), like most KDE applications.
