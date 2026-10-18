@@ -1,0 +1,4 @@
+/target
+*.mkv
+*.webm
+.claude/settings.local.json
