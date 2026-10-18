@@ -9,3 +9,4 @@ ashpd = "0.11"
 gstreamer = "0.23"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
 anyhow = "1"
+futures-util = "0.3"

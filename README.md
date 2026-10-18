@@ -56,7 +56,10 @@ cargo build --release
 
 1. KDE shows a dialog: pick a screen or a window.
 2. Recording starts into a file named after the start time (e.g. `2026-10-18_14-32-05_kapt.mkv`), in the current directory.
-3. Press **Ctrl+C** to stop.
+3. Press **Meta+Shift+P** (global shortcut, works from any window) to pause or resume: paused parts are cut from the video.
+4. Press **Ctrl+C** in the terminal to stop.
+
+The first time, KDE asks you to confirm the shortcut; you can change it later in *System Settings → Keyboard → Shortcuts*.
 
 If no dialog shows up, check that the portal is running:
 `systemctl --user status xdg-desktop-portal xdg-desktop-portal-kde`.
