@@ -10,6 +10,28 @@ ScreenCast portal → PipeWire → GStreamer (x264) → capture.mkv
 
 > ⚠️ This project is a prototype.
 
+## How it works
+
+1. kapt asks the **ScreenCast portal** for permission; KDE shows a dialog where you pick a screen or window.
+2. **KWin** publishes the selected screen as a **PipeWire** stream; the portal hands kapt a connection (`fd`) and the stream id (`node_id`). kapt never reads the screen directly.
+3. A **GStreamer** pipeline turns that stream into a file:
+
+```
+pipewiresrc → videoconvert → queue → x264enc → h264parse → matroskamux → filesink
+```
+
+| Element        | Role |
+|----------------|------|
+| `pipewiresrc`  | connects to the PipeWire stream and receives raw frames |
+| `videoconvert` | converts the pixel format (the screen gives RGB, the encoder wants YUV) |
+| `queue`        | buffer, so capture never waits for the encoder |
+| `x264enc`      | compresses frames to H.264 (constant quality, CRF 18) |
+| `h264parse`    | formats the H.264 stream for the container |
+| `matroskamux`  | wraps the video in an MKV file, with timestamps |
+| `filesink`     | writes the result to disk |
+
+On **Ctrl+C**, kapt sends an **EOS** (end of stream) through the pipeline: each element flushes its buffers and `matroskamux` writes the file index. Without it, the MKV would be corrupted or not seekable.
+
 ## Requirements
 
 - A **Wayland** session (KDE Plasma 6 recommended; also works on X11 if the portal is available)
