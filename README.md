@@ -66,6 +66,18 @@ If no dialog shows up, check that the portal is running:
 
 ## Roadmap
 
+Done:
+
+- [x] Screen or window capture through the ScreenCast portal and PipeWire
+- [x] H.264 encoding in constant-quality mode (CRF 18), MKV output always finalized properly
+- [x] Startup check of the required GStreamer elements, with the missing plugins listed
+- [x] Output file named after the start time (`2026-10-18_14-32-05_kapt.mkv`)
+- [x] Pause/resume and stop with global shortcuts (GlobalShortcuts portal), paused parts cut from the video
+- [x] Tray icon showing the state (recording / paused), with pause and stop actions
+
+Planned:
+
+- [ ] Split the code into a desktop-independent core (portal, PipeWire, GStreamer, pause logic) and optional front-ends, to offer a plain command-line kapt for non-KDE environments (GNOME, wlroots…) without the tray icon and with optional global shortcuts
 - [ ] Command-line options (output file, codec, bitrate, FPS)
 - [ ] Quality options: `--quality` (x264 CRF, currently fixed at 18) and `--preset` (x264 speed preset, currently `veryfast`)
 - [ ] Optional 4:4:4 chroma (`video/x-raw,format=Y444`) for sharper colored text, at the cost of player compatibility
