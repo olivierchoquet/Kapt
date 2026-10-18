@@ -37,7 +37,7 @@ fn check_elements() -> Result<()> {
     for (element, plugin) in missing {
         message.push_str(&format!("  - {element} (provided by {plugin})\n"));
     }
-    message.push_str("See the \"Installing dependencies\" section of the README.");
+    message.push_str("See the \"Installation\" section of the README.");
     bail!(message)
 }
 
