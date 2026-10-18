@@ -57,9 +57,9 @@ cargo build --release
 1. KDE shows a dialog: pick a screen or a window.
 2. Recording starts into a file named after the start time (e.g. `2026-10-18_14-32-05_kapt.mkv`), in the current directory.
 3. Press **Meta+Shift+P** (global shortcut, works from any window) to pause or resume: paused parts are cut from the video.
-4. Press **Ctrl+C** in the terminal to stop.
+4. Press **Meta+Shift+X** (global shortcut) or **Ctrl+C** in the terminal to stop.
 
-The first time, KDE asks you to confirm the shortcut; you can change it later in *System Settings → Keyboard → Shortcuts*.
+The first time, KDE asks you to confirm the shortcuts; you can change it later in *System Settings → Keyboard → Shortcuts*.
 
 If no dialog shows up, check that the portal is running:
 `systemctl --user status xdg-desktop-portal xdg-desktop-portal-kde`.
@@ -70,6 +70,7 @@ If no dialog shows up, check that the portal is running:
 - [ ] Quality options: `--quality` (x264 CRF, currently fixed at 18) and `--preset` (x264 speed preset, currently `veryfast`)
 - [ ] Optional 4:4:4 chroma (`video/x-raw,format=Y444`) for sharper colored text, at the cost of player compatibility
 - [ ] Adapt encoding settings to the selected source: read its resolution from the portal stream and pick quality/preset accordingly (e.g. a faster preset for 4K to avoid dropped frames)
+- [ ] KDE notifications (recording started, paused, finished with the file name) via the Notification portal
 - [ ] Audio capture (microphone and system sound)
 - [ ] Hardware encoding via VA-API (`vah264enc`)
 - [ ] Remember the selected source (`restore_token`)

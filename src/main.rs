@@ -19,6 +19,9 @@ const APP_ID: &str = "io.github.olivierchoquet.Kapt";
 /// Global shortcut that toggles pause/resume.
 const SHORTCUT_PAUSE: &str = "toggle-pause";
 
+/// Global shortcut that stops the recording (same as Ctrl+C).
+const SHORTCUT_STOP: &str = "stop";
+
 /// GStreamer elements used by the pipeline, with the plugin set that provides them.
 /// Core elements (`queue`, `filesink`) are always available and are not listed.
 const REQUIRED_ELEMENTS: &[(&str, &str)] = &[
@@ -127,13 +130,16 @@ fn toggle_pause(pipeline: &gst::Pipeline, state: &Mutex<PauseState>) -> Result<(
 /// Activation events of the bound global shortcuts.
 type ShortcutEvents = Pin<Box<dyn Stream<Item = Activated> + Send>>;
 
-/// Binds the pause/resume global shortcut through the GlobalShortcuts portal.
-/// The first time, KDE asks the user to confirm (or change) the key combination.
+/// Binds the pause/resume and stop global shortcuts through the GlobalShortcuts portal.
+/// The first time, KDE asks the user to confirm (or change) the key combinations.
 async fn bind_shortcuts() -> Result<ShortcutEvents> {
     let proxy = GlobalShortcuts::new().await?;
     let session = proxy.create_session().await?;
-    let shortcuts = [NewShortcut::new(SHORTCUT_PAUSE, "Pause/resume recording")
-        .preferred_trigger("LOGO+SHIFT+p")];
+    let shortcuts = [
+        NewShortcut::new(SHORTCUT_PAUSE, "Pause/resume recording")
+            .preferred_trigger("LOGO+SHIFT+p"),
+        NewShortcut::new(SHORTCUT_STOP, "Stop recording").preferred_trigger("LOGO+SHIFT+x"),
+    ];
     let bound = proxy
         .bind_shortcuts(&session, &shortcuts, None)
         .await?
@@ -172,7 +178,9 @@ async fn main() -> Result<()> {
     let mut shortcut_events = match bind_shortcuts().await {
         Ok(events) => events,
         Err(err) => {
-            eprintln!("warning: global shortcuts unavailable, pause disabled: {err:#}");
+            eprintln!(
+                "warning: global shortcuts unavailable, pause and stop shortcuts disabled: {err:#}"
+            );
             Box::pin(stream::pending())
         }
     };
@@ -231,15 +239,17 @@ async fn main() -> Result<()> {
     pipeline.set_state(gst::State::Playing)?;
     println!("Recording to {output}… Press Ctrl+C to stop.");
 
-    // 4. Record until Ctrl+C, watching for errors and pause/resume shortcuts
+    // 4. Record until Ctrl+C or the stop shortcut, watching for errors and pause/resume
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
     loop {
         tokio::select! {
             _ = &mut ctrl_c => break,
             Some(event) = shortcut_events.next() => {
-                if event.shortcut_id() == SHORTCUT_PAUSE {
-                    toggle_pause(&pipeline, &pause_state)?;
+                match event.shortcut_id() {
+                    SHORTCUT_PAUSE => toggle_pause(&pipeline, &pause_state)?,
+                    SHORTCUT_STOP => break,
+                    _ => {}
                 }
             }
             _ = tokio::time::sleep(Duration::from_millis(100)) => {
