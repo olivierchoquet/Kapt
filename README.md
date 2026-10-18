@@ -93,7 +93,8 @@ Planned:
 - [ ] Background mode: kapt stays in the tray and a global shortcut starts a new recording
 - [ ] Optional countdown before recording starts
 - [ ] Multi-monitor capture and region selection (crop)
-- [ ] Other output formats: MP4 (fragmented, so it stays readable if interrupted), WebM/AV1, GIF for short clips
+- [ ] Direct MP4 output: `mp4mux fragment-duration=1000 fragment-mode=first-moov-then-finalise` writes fragments while recording (readable if interrupted) and rewrites a standard MP4 on EOS; the EOS wait (currently 5 s) must be raised for long recordings
+- [ ] Other output formats: WebM/AV1, GIF for short clips
 - [ ] Desktop file, AppStream metadata and application icon, so KDE shows "kapt" by name in the shortcut and sharing dialogs
 - [ ] Packaging: Flatpak, AUR, .deb
 - [ ] Unit tests for the pause timestamp logic and a CI (GitHub Actions: `cargo fmt`, `clippy`, `build`)
