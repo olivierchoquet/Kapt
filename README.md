@@ -87,6 +87,17 @@ Planned:
 - [ ] Hardware encoding via VA-API (`vah264enc`)
 - [ ] Remember the selected source (`restore_token`)
 - [ ] QML graphical interface via cxx-qt
+- [ ] Finalize the file properly when the capture is stopped from outside (KDE's "stop sharing" indicator, source window closed) or when a GStreamer error occurs, instead of leaving a truncated MKV
+- [ ] Save recordings to the XDG videos folder (`~/Videos`) by default instead of the current directory
+- [ ] Show the elapsed recording time (tray tooltip, terminal)
+- [ ] Background mode: kapt stays in the tray and a global shortcut starts a new recording
+- [ ] Optional countdown before recording starts
+- [ ] Multi-monitor capture and region selection (crop)
+- [ ] Other output formats: MP4 (fragmented, so it stays readable if interrupted), WebM/AV1, GIF for short clips
+- [ ] Desktop file, AppStream metadata and application icon, so KDE shows "kapt" by name in the shortcut and sharing dialogs
+- [ ] Packaging: Flatpak, AUR, .deb
+- [ ] Unit tests for the pause timestamp logic and a CI (GitHub Actions: `cargo fmt`, `clippy`, `build`)
+- [ ] Translations (French first)
 
 ## License
 
