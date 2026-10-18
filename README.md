@@ -55,7 +55,7 @@ cargo build --release
 ```
 
 1. KDE shows a dialog: pick a screen or a window.
-2. Recording starts into `capture.mkv`, in the current directory.
+2. Recording starts into a file named after the start time (e.g. `2026-10-18_14-32-05_kapt.mkv`), in the current directory.
 3. Press **Ctrl+C** to stop.
 
 If no dialog shows up, check that the portal is running:

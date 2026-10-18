@@ -71,6 +71,12 @@ async fn main() -> Result<()> {
     // 2. Get the PipeWire connection provided by the portal
     let fd = proxy.open_pipe_wire_remote(&session).await?;
 
+    // Output file named after the local start time, e.g. 2026-10-18_14-32-05_kapt.mkv
+    // (no ':' so the name stays valid on every filesystem)
+    let output = gst::glib::DateTime::now_local()
+        .and_then(|now| now.format("%Y-%m-%d_%H-%M-%S_kapt.mkv"))
+        .context("cannot build the output file name from the current time")?;
+
     // 3. Build the GStreamer pipeline: PipeWire -> H.264 -> MKV
     //    x264enc defaults to a 2 Mbit/s constant bitrate, far too low for screen
     //    content: use constant-quality mode instead (pass=qual, quantizer = CRF,
@@ -79,7 +85,7 @@ async fn main() -> Result<()> {
         "pipewiresrc fd={fd} path={node_id} do-timestamp=true keepalive-time=1000 resend-last=true \
          ! videoconvert ! queue \
          ! x264enc tune=zerolatency speed-preset=veryfast pass=qual quantizer=18 \
-         ! h264parse ! matroskamux ! filesink location=capture.mkv",
+         ! h264parse ! matroskamux ! filesink location=\"{output}\"",
         fd = fd.as_raw_fd(),
     );
     let pipeline = gst::parse::launch(&pipeline_desc)?
@@ -88,7 +94,7 @@ async fn main() -> Result<()> {
     let bus = pipeline.bus().context("pipeline has no bus")?;
 
     pipeline.set_state(gst::State::Playing)?;
-    println!("Recording to capture.mkv… Press Ctrl+C to stop.");
+    println!("Recording to {output}… Press Ctrl+C to stop.");
 
     // 4. Record until Ctrl+C, watching for errors
     let ctrl_c = tokio::signal::ctrl_c();
@@ -117,6 +123,6 @@ async fn main() -> Result<()> {
     pipeline.set_state(gst::State::Null)?;
 
     drop(fd); // keep the PipeWire connection open until here
-    println!("Done: capture.mkv");
+    println!("Done: {output}");
     Ok(())
 }
