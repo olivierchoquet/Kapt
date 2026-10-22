@@ -7,6 +7,28 @@ this file says *why*.
 Each entry: **Problem**, **Decision**, **Rejected** (alternatives considered),
 **Consequences**, **Commit**. Unsolved problems go to [Open issues](#open-issues).
 
+## 2026-10-22 — Unit tests for the pause logic, CI
+
+**Problem:** the pause timestamp logic, the most delicate code, was only
+checked by hand, mixed with the pad probe and the pipeline.
+
+**Decision:** move it to `src/pause.rs` as pure methods on `PauseState`
+(`toggle(now)`, `shift(pts)`) that take and return timestamps; the probe and
+`toggle_pause` only call them. Unit tests cover: no pause, frames dropped while
+paused, shift after resume, frames in flight from before the resume, several
+pauses, pause at start, instant pause, and increasing timestamps over a
+simulated 10 s recording. CI on GitHub Actions (Ubuntu 24.04): `cargo fmt
+--check`, `cargo clippy --all-targets -D warnings`, `cargo test`.
+
+**Rejected:** testing with a real pipeline (`videotestsrc`) in CI: slower,
+needs the GStreamer plugins, and the logic is what needed coverage.
+
+**Consequences:** CI only installs `libgstreamer1.0-dev` (to compile and link),
+not the plugins. Code that touches the pipeline or the portals is still tested
+by hand.
+
+**Commit:** see the commit adding this entry
+
 ## 2026-10-22 — Keep the video size fixed during a recording
 
 **Problem:** resizing a captured window changes the frame size in the middle

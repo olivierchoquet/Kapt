@@ -87,6 +87,7 @@ If no dialog shows up, check that the portal is running:
 Done:
 
 - [x] Screen or window capture through the ScreenCast portal and PipeWire
+- [x] Unit tests for the pause timestamp logic, CI on GitHub Actions (format, clippy, tests)
 - [x] Constant video size: a captured window resized while recording is scaled to fit, with black borders
 - [x] H.264 encoding in constant-quality mode (CRF 18), 4:2:0 for player compatibility (odd window sizes trimmed by one pixel), MKV output finalized properly
 - [x] Startup check of the required GStreamer elements, with the missing plugins listed
@@ -115,8 +116,17 @@ Planned:
 - [ ] Other output formats: WebM/AV1, GIF for short clips
 - [ ] Desktop file, AppStream metadata and application icon, so KDE shows "kapt" by name in the shortcut and sharing dialogs
 - [ ] Packaging: Flatpak, AUR, .deb
-- [ ] Unit tests for the pause timestamp logic and a CI (GitHub Actions: `cargo fmt`, `clippy`, `build`)
 - [ ] Translations (French first)
+
+## Development
+
+```bash
+cargo fmt                                  # format
+cargo clippy --all-targets -- -D warnings  # lint, tests included
+cargo test                                 # unit tests (no graphical session needed)
+```
+
+The CI (`.github/workflows/ci.yml`) runs the same three checks on every push to `main` and every pull request.
 
 ## License
 

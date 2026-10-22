@@ -19,12 +19,13 @@ Ne mets pas à jour `ashpd` ni `gstreamer` vers une version majeure plus récent
 ## Commandes
 - Vérifier : `cargo check`
 - Compiler : `cargo build`
-- Lint : `cargo clippy -- -D warnings`
+- Lint : `cargo clippy --all-targets -- -D warnings`
+- Tests : `cargo test` (tests unitaires, sans session graphique)
 - Formater : `cargo fmt`
 - Lancer : `cargo run` (ouvre la boîte de dialogue KDE, nécessite une session graphique ; ne le lance pas sans me demander)
 
 ## Règles
-- Après chaque modification du code, lance `cargo fmt`, puis `cargo clippy -- -D warnings`, et corrige les avertissements.
+- Après chaque modification du code, lance `cargo fmt`, puis `cargo clippy --all-targets -- -D warnings` et `cargo test`, et corrige les avertissements et les échecs. Garde la logique testable (calculs, décisions) hors du code qui touche au pipeline ou aux portails, et ajoute-lui des tests.
 - Pas de `unwrap()` dans le code applicatif : utilise `?` et `anyhow::Context`.
 - Le fichier de sortie doit être finalisé proprement quand l'utilisateur arrête l'enregistrement (EOS poussé depuis la sortie de `pipewiresrc` avant de passer le pipeline à `Null`). Un arrêt extérieur ou une erreur est seulement signalé (voir `docs/DECISIONS.md`).
 - Garde la description du pipeline GStreamer lisible et commentée.

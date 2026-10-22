@@ -1,5 +1,6 @@
 mod cli;
 mod icon;
+mod pause;
 mod tray;
 
 use std::os::fd::AsRawFd;
@@ -21,6 +22,7 @@ use ksni::TrayMethods;
 use tokio::sync::mpsc::{self, UnboundedSender};
 
 use cli::{Args, Output};
+use pause::{PauseState, Toggle};
 use tray::{Command, KaptTray};
 
 /// Application ID registered with the portals (needed by KDE to bind global shortcuts).
@@ -69,22 +71,6 @@ fn check_elements() -> Result<()> {
     bail!(message)
 }
 
-/// Pause bookkeeping shared between the main task and the pad probe.
-///
-/// While paused, frames are dropped. On resume, the pause duration is added to
-/// `offset`, which is subtracted from every following timestamp: the recording
-/// continues seamlessly instead of showing a frozen frame for the whole pause.
-#[derive(Default)]
-struct PauseState {
-    paused: bool,
-    /// Running time at which the current pause started.
-    paused_at: gst::ClockTime,
-    /// Running time of the last resume: older frames still in flight are dropped.
-    resumed_at: gst::ClockTime,
-    /// Total duration of all pauses so far.
-    offset: gst::ClockTime,
-}
-
 /// Installs a probe on the source pad that drops frames while paused and
 /// shifts the timestamps of the following ones.
 fn install_pause_probe(pipeline: &gst::Pipeline, state: Arc<Mutex<PauseState>>) -> Result<()> {
@@ -104,14 +90,14 @@ fn install_pause_probe(pipeline: &gst::Pipeline, state: Arc<Mutex<PauseState>>) 
             return gst::PadProbeReturn::Ok;
         };
 
-        if state.paused || pts < state.resumed_at {
+        let Some(new_pts) = state.shift(pts) else {
             return gst::PadProbeReturn::Drop;
-        }
-        if !state.offset.is_zero() {
+        };
+        if new_pts != pts {
             let buffer = buffer.make_mut();
-            buffer.set_pts(pts.saturating_sub(state.offset));
+            buffer.set_pts(new_pts);
             if let Some(dts) = buffer.dts() {
-                buffer.set_dts(dts.saturating_sub(state.offset));
+                buffer.set_dts(dts.saturating_sub(state.offset()));
             }
         }
         gst::PadProbeReturn::Ok
@@ -181,18 +167,13 @@ fn toggle_pause(pipeline: &gst::Pipeline, state: &Mutex<PauseState>) -> Result<b
         .lock()
         .map_err(|_| anyhow!("pause state lock poisoned"))?;
 
-    if state.paused {
-        let pause = now.saturating_sub(state.paused_at);
-        state.offset += pause;
-        state.resumed_at = now;
-        state.paused = false;
-        println!("⏺ Recording (paused for {:.1} s)", pause.seconds_f64());
-    } else {
-        state.paused_at = now;
-        state.paused = true;
-        println!("⏸ Paused");
+    match state.toggle(now) {
+        Toggle::Paused => println!("⏸ Paused"),
+        Toggle::Resumed(pause) => {
+            println!("⏺ Recording (paused for {:.1} s)", pause.seconds_f64())
+        }
     }
-    Ok(state.paused)
+    Ok(state.is_paused())
 }
 
 /// Finalizes the output file: sends EOS, waits until it reaches the sink
