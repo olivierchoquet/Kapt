@@ -7,6 +7,20 @@ this file says *why*.
 Each entry: **Problem**, **Decision**, **Rejected** (alternatives considered),
 **Consequences**, **Commit**. Unsolved problems go to [Open issues](#open-issues).
 
+## 2026-10-22 — No countdown before recording
+
+**Problem:** the roadmap planned an optional countdown before recording starts.
+
+**Decision:** dropped for now: limited use. Shown on screen, it would end up
+at the start of the video, like a notification; shown only in the terminal or
+the tray, it adds little over starting kapt a few seconds early.
+
+**Rejected:** a countdown in the terminal and the tray icon only.
+
+**Consequences:** roadmap item removed; can come back if a need shows up.
+
+**Commit:** see the commit adding this entry
+
 ## 2026-10-22 — No desktop notifications
 
 **Problem:** the roadmap planned KDE notifications (recording started, paused,

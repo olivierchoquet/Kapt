@@ -109,7 +109,6 @@ Planned:
 - [ ] Finalize the file properly when the capture is stopped from outside (KDE's "stop sharing" indicator, source window closed) or when a GStreamer error occurs, instead of leaving a truncated MKV (currently only logged)
 - [ ] Show the elapsed recording time (tray tooltip, terminal)
 - [ ] Background mode: kapt stays in the tray and a global shortcut starts a new recording
-- [ ] Optional countdown before recording starts
 - [ ] Multi-monitor capture and region selection (crop)
 - [ ] Direct MP4 output: `mp4mux fragment-duration=1000 fragment-mode=first-moov-then-finalise` writes fragments while recording (readable if interrupted) and rewrites a standard MP4 on EOS; the EOS wait (currently 5 s) must be raised for long recordings
 - [ ] Other output formats: WebM/AV1, GIF for short clips
