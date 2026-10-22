@@ -28,6 +28,9 @@ const SHORTCUT_PAUSE: &str = "toggle-pause";
 /// Global shortcut that stops the recording (same as Ctrl+C).
 const SHORTCUT_STOP: &str = "stop";
 
+/// How long to wait for EOS to reach the sink when finalizing the file.
+const EOS_TIMEOUT: gst::ClockTime = gst::ClockTime::from_seconds(5);
+
 /// GStreamer elements used by the pipeline, with the plugin set that provides them.
 /// Core elements (`queue`, `filesink`) are always available and are not listed.
 const REQUIRED_ELEMENTS: &[(&str, &str)] = &[
@@ -132,6 +135,34 @@ fn toggle_pause(pipeline: &gst::Pipeline, state: &Mutex<PauseState>) -> Result<b
         println!("⏸ Paused");
     }
     Ok(state.paused)
+}
+
+/// Finalizes the output file: sends EOS, waits until it reaches the sink
+/// (matroskamux then writes its index) and stops the pipeline.
+/// Returns `true` if the file was finalized properly.
+///
+/// EOS is pushed directly from the source pad of pipewiresrc rather than sent
+/// to the pipeline: pipewiresrc does not forward an EOS sent to it, so it would
+/// never reach the elements downstream. Frames the source still pushes
+/// afterwards are refused, which makes it stop.
+fn finalize(pipeline: &gst::Pipeline, bus: &gst::Bus) -> Result<bool> {
+    pipeline
+        .by_name("src")
+        .and_then(|src| src.static_pad("src"))
+        .context("cannot find the source pad of pipewiresrc")?
+        .push_event(gst::event::Eos::new());
+
+    let msg = bus.timed_pop_filtered(
+        EOS_TIMEOUT,
+        &[gst::MessageType::Eos, gst::MessageType::Error],
+    );
+    let finalized = matches!(
+        msg.as_ref().map(|msg| msg.view()),
+        Some(gst::MessageView::Eos(_))
+    );
+
+    pipeline.set_state(gst::State::Null)?;
+    Ok(finalized)
 }
 
 /// Binds the pause/resume and stop global shortcuts through the GlobalShortcuts portal,
@@ -261,26 +292,35 @@ async fn main() -> Result<()> {
         }
     };
 
-    // 4. Record until Ctrl+C or a stop command, watching for errors and pause/resume
+    // 4. Record until Ctrl+C or a stop command, watching for errors and pause/resume.
+    //    Only a user stop is handled cleanly: if the capture is stopped from
+    //    outside (KDE's "stop sharing" indicator, captured window closed),
+    //    pipewiresrc reports an error, which is logged, and the file may be truncated.
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
     loop {
         tokio::select! {
             _ = &mut ctrl_c => break,
             Some(command) = command_rx.recv() => match command {
-                Command::TogglePause => {
-                    let paused = toggle_pause(&pipeline, &pause_state)?;
-                    if let Some(tray) = &tray {
-                        tray.update(|tray| tray.paused = paused).await;
+                Command::TogglePause => match toggle_pause(&pipeline, &pause_state) {
+                    Ok(paused) => {
+                        if let Some(tray) = &tray {
+                            tray.update(|tray| tray.paused = paused).await;
+                        }
                     }
-                }
+                    Err(err) => eprintln!("warning: cannot pause/resume: {err:#}"),
+                },
                 Command::Stop => break,
             },
             _ = tokio::time::sleep(Duration::from_millis(100)) => {
                 if let Some(msg) = bus.pop_filtered(&[gst::MessageType::Error]) {
                     if let gst::MessageView::Error(err) = msg.view() {
                         pipeline.set_state(gst::State::Null)?;
-                        bail!("GStreamer error: {} ({:?})", err.error(), err.debug());
+                        bail!(
+                            "GStreamer error: {} ({:?})\n{output} may be truncated",
+                            err.error(),
+                            err.debug()
+                        );
                     }
                 }
             }
@@ -289,17 +329,17 @@ async fn main() -> Result<()> {
 
     // 5. Send EOS so the file is finalized properly
     println!("\nStopping, finalizing the file…");
-    pipeline.send_event(gst::event::Eos::new());
-    bus.timed_pop_filtered(
-        gst::ClockTime::from_seconds(5),
-        &[gst::MessageType::Eos, gst::MessageType::Error],
-    );
-    pipeline.set_state(gst::State::Null)?;
+    let finalized = finalize(&pipeline, &bus)?;
 
     if let Some(tray) = tray {
         tray.shutdown().await;
     }
     drop(fd); // keep the PipeWire connection open until here
-    println!("Done: {output}");
+
+    if finalized {
+        println!("Done: {output}");
+    } else {
+        eprintln!("warning: the file could not be finalized, {output} may be truncated");
+    }
     Ok(())
 }

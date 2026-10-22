@@ -26,7 +26,11 @@ pipewiresrc → videoconvert → queue → x264enc → h264parse → matroskamux
 
 kapt checks that these elements are available at startup and lists any missing ones.
 
-On **Ctrl+C**, kapt sends an **EOS** (end of stream) through the pipeline: each element flushes its buffers and `matroskamux` writes the file index, so the MKV is always finalized properly.
+### Stopping cleanly: EOS
+
+An **EOS** (*end of stream*) is a special GStreamer event that travels through the pipeline like a frame, after the last one, and tells each element "nothing more is coming". Each element finishes its work before passing it on: the encoder outputs the frames it still holds, then `matroskamux` writes the file **index** (the table that lets players show the duration and seek). Without it, the MKV is truncated: no duration, no seeking, sometimes missing the last seconds.
+
+When you stop the recording (Ctrl+C, shortcut or tray menu), kapt therefore pushes an EOS right after `pipewiresrc` and waits (up to 5 s) for it to reach `filesink`, before shutting the pipeline down. If the capture is stopped from outside (KDE's "stop sharing" indicator, captured window closed) or a GStreamer error occurs, kapt only logs the error: the file may be truncated.
 
 ## Installation
 
@@ -87,7 +91,7 @@ Planned:
 - [ ] Hardware encoding via VA-API (`vah264enc`)
 - [ ] Remember the selected source (`restore_token`)
 - [ ] QML graphical interface via cxx-qt
-- [ ] Finalize the file properly when the capture is stopped from outside (KDE's "stop sharing" indicator, source window closed) or when a GStreamer error occurs, instead of leaving a truncated MKV
+- [ ] Finalize the file properly when the capture is stopped from outside (KDE's "stop sharing" indicator, source window closed) or when a GStreamer error occurs, instead of leaving a truncated MKV (currently only logged)
 - [ ] Save recordings to the XDG videos folder (`~/Videos`) by default instead of the current directory
 - [ ] Show the elapsed recording time (tray tooltip, terminal)
 - [ ] Background mode: kapt stays in the tray and a global shortcut starts a new recording
