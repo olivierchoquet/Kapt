@@ -38,6 +38,7 @@ const REQUIRED_ELEMENTS: &[(&str, &str)] = &[
         "pipewiresrc",
         "the PipeWire plugin (gstreamer1.0-pipewire / gst-plugin-pipewire)",
     ),
+    ("videocrop", "gst-plugins-good"),
     ("videoconvert", "gst-plugins-base"),
     ("x264enc", "gst-plugins-ugly"),
     ("h264parse", "gst-plugins-bad"),
@@ -108,6 +109,40 @@ fn install_pause_probe(pipeline: &gst::Pipeline, state: Arc<Mutex<PauseState>>) 
                 buffer.set_dts(dts.saturating_sub(state.offset));
             }
         }
+        gst::PadProbeReturn::Ok
+    });
+    Ok(())
+}
+
+/// Installs a probe on the source pad that keeps the frame size even, which
+/// 4:2:0 encoding requires (one chroma sample per 2×2 pixels): when the source
+/// announces its size, the crop element removes the odd last column and/or row.
+/// The size changes when a captured window is resized, so every new size is handled.
+fn install_even_crop_probe(pipeline: &gst::Pipeline) -> Result<()> {
+    let pad = pipeline
+        .by_name("src")
+        .and_then(|src| src.static_pad("src"))
+        .context("cannot find the source pad of pipewiresrc")?;
+    let crop = pipeline
+        .by_name("crop")
+        .context("cannot find videocrop in the pipeline")?;
+
+    pad.add_probe(gst::PadProbeType::EVENT_DOWNSTREAM, move |_, info| {
+        let Some(gst::EventView::Caps(caps)) = info.event().map(|event| event.view()) else {
+            return gst::PadProbeReturn::Ok;
+        };
+        let Some(structure) = caps.caps().structure(0) else {
+            return gst::PadProbeReturn::Ok;
+        };
+        let (Ok(width), Ok(height)) = (
+            structure.get::<i32>("width"),
+            structure.get::<i32>("height"),
+        ) else {
+            return gst::PadProbeReturn::Ok;
+        };
+        // Set before the caps event reaches videocrop, so it applies to this size
+        crop.set_property("right", width % 2);
+        crop.set_property("bottom", height % 2);
         gst::PadProbeReturn::Ok
     });
     Ok(())
@@ -261,13 +296,18 @@ async fn main() -> Result<()> {
         .context("cannot build the output file name from the current time")?;
 
     // 3. Build the GStreamer pipeline: PipeWire -> H.264 -> MKV
-    //    pipewiresrc is named "src" so the pause probe can find it.
+    //    pipewiresrc is named "src" and videocrop "crop" so the probes can find them.
+    //    videoconvert would pick 4:4:4 (closest to the RGB screen), which many
+    //    players cannot decode: force 4:2:0 (I420) instead. 4:2:0 needs an even
+    //    frame size, so videocrop first trims an odd last column/row (set by the
+    //    crop probe; a window can have any size).
     //    x264enc defaults to a 2 Mbit/s constant bitrate, far too low for screen
     //    content: use constant-quality mode instead (pass=qual, quantizer = CRF,
     //    lower is sharper; 18 is visually near-lossless).
     let pipeline_desc = format!(
         "pipewiresrc name=src fd={fd} path={node_id} do-timestamp=true keepalive-time=1000 resend-last=true \
-         ! videoconvert ! queue \
+         ! videocrop name=crop \
+         ! videoconvert ! video/x-raw,format=I420 ! queue \
          ! x264enc tune=zerolatency speed-preset=veryfast pass=qual quantizer=18 \
          ! h264parse ! matroskamux ! filesink location=\"{output}\"",
         fd = fd.as_raw_fd(),
@@ -279,6 +319,7 @@ async fn main() -> Result<()> {
 
     let pause_state = Arc::new(Mutex::new(PauseState::default()));
     install_pause_probe(&pipeline, Arc::clone(&pause_state))?;
+    install_even_crop_probe(&pipeline)?;
 
     pipeline.set_state(gst::State::Playing)?;
     println!("Recording to {output}… Press Ctrl+C to stop.");

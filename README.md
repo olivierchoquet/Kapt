@@ -11,13 +11,14 @@ Command-line screen recorder for Linux, designed primarily for **KDE Plasma** on
 3. A **GStreamer** pipeline turns that stream into an H.264 MKV file:
 
 ```
-pipewiresrc → videoconvert → queue → x264enc → h264parse → matroskamux → filesink
+pipewiresrc → videocrop → videoconvert → queue → x264enc → h264parse → matroskamux → filesink
 ```
 
 | Element        | Role                                                         | Ubuntu package            |
 |----------------|--------------------------------------------------------------|---------------------------|
 | `pipewiresrc`  | connects to the PipeWire stream and receives raw frames      | `gstreamer1.0-pipewire`   |
-| `videoconvert` | converts the pixel format (RGB from the screen → YUV)        | `gstreamer1.0-plugins-base` |
+| `videocrop`    | trims an odd last column/row: 4:2:0 needs an even frame size | `gstreamer1.0-plugins-good` |
+| `videoconvert` | converts the pixel format (RGB from the screen → YUV 4:2:0, readable by every player) | `gstreamer1.0-plugins-base` |
 | `queue`        | buffer, so capture never waits for the encoder               | core                      |
 | `x264enc`      | compresses frames to H.264 (constant quality, CRF 18)        | `gstreamer1.0-plugins-ugly` |
 | `h264parse`    | formats the H.264 stream for the container                   | `gstreamer1.0-plugins-bad`  |
@@ -73,7 +74,7 @@ If no dialog shows up, check that the portal is running:
 Done:
 
 - [x] Screen or window capture through the ScreenCast portal and PipeWire
-- [x] H.264 encoding in constant-quality mode (CRF 18), MKV output always finalized properly
+- [x] H.264 encoding in constant-quality mode (CRF 18), 4:2:0 for player compatibility (odd window sizes trimmed by one pixel), MKV output finalized properly
 - [x] Startup check of the required GStreamer elements, with the missing plugins listed
 - [x] Output file named after the start time (`2026-10-18_14-32-05_kapt.mkv`)
 - [x] Pause/resume and stop with global shortcuts (GlobalShortcuts portal), paused parts cut from the video
