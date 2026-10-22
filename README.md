@@ -102,7 +102,6 @@ Planned:
 - [ ] More command-line options: codec, bitrate, FPS
 - [ ] Optional 4:4:4 chroma (`video/x-raw,format=Y444`) for sharper colored text, at the cost of player compatibility
 - [ ] Adapt encoding settings to the selected source: read its resolution from the portal stream and pick quality/preset accordingly (e.g. a faster preset for 4K to avoid dropped frames)
-- [ ] KDE notifications (recording started, paused, finished with the file name) via the Notification portal
 - [ ] Audio capture (microphone and system sound)
 - [ ] Hardware encoding via VA-API (`vah264enc`)
 - [ ] Remember the selected source (`restore_token`)

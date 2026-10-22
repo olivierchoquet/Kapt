@@ -7,6 +7,23 @@ this file says *why*.
 Each entry: **Problem**, **Decision**, **Rejected** (alternatives considered),
 **Consequences**, **Commit**. Unsolved problems go to [Open issues](#open-issues).
 
+## 2026-10-22 — No desktop notifications
+
+**Problem:** the roadmap planned KDE notifications (recording started, paused,
+finished) through the Notification portal.
+
+**Decision:** dropped. A notification pops up on the screen being recorded,
+so it would end up in the video. The tray icon (state) and the terminal
+(messages, file name) already give the same information without getting in
+the way.
+
+**Rejected:** notifications only at the end, after the recording stopped:
+little use, since the terminal already prints the file name.
+
+**Consequences:** roadmap item removed.
+
+**Commit:** see the commit adding this entry
+
 ## 2026-10-22 — Unit tests for the pause logic, CI
 
 **Problem:** the pause timestamp logic, the most delicate code, was only
