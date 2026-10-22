@@ -26,7 +26,7 @@ Ne mets pas à jour `ashpd` ni `gstreamer` vers une version majeure plus récent
 ## Règles
 - Après chaque modification du code, lance `cargo fmt`, puis `cargo clippy -- -D warnings`, et corrige les avertissements.
 - Pas de `unwrap()` dans le code applicatif : utilise `?` et `anyhow::Context`.
-- Le fichier de sortie doit toujours être finalisé proprement (envoi d'EOS avant de passer le pipeline à `Null`).
+- Le fichier de sortie doit être finalisé proprement quand l'utilisateur arrête l'enregistrement (EOS poussé depuis la sortie de `pipewiresrc` avant de passer le pipeline à `Null`). Un arrêt extérieur ou une erreur est seulement signalé (voir `docs/DECISIONS.md`).
 - Garde la description du pipeline GStreamer lisible et commentée.
 - Ne lance jamais `sudo`. Si une dépendance système manque, dis-moi quel paquet installer.
 - Après chaque problème réglé ou décision prise, ajoute une entrée en tête de `docs/DECISIONS.md` (en anglais : problème, décision, pistes écartées, conséquences, commit), dans le même commit que le code. Un problème non résolu va dans la section « Open issues » ; retire-le de là quand il est réglé.
