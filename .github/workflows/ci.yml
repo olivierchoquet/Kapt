@@ -12,7 +12,7 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # GStreamer development files, needed to compile and link the gstreamer crate
       # (the plugins are only needed at run time, not by the tests)
