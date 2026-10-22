@@ -151,6 +151,7 @@ Planned:
 - [ ] Remember the selected source (`restore_token`)
 - [ ] QML graphical interface via cxx-qt
 - [ ] Finalize the file properly when the capture is stopped from outside (KDE's "stop sharing" indicator, source window closed) or when a GStreamer error occurs, instead of leaving a truncated MKV (currently only logged)
+- [ ] Log file in `~/.local/state/kapt/kapt.log` (XDG state folder): timestamped messages, as in the terminal, plus the full GStreamer details on errors
 - [ ] Show the elapsed recording time (tray tooltip, terminal)
 - [ ] Background mode: kapt stays in the tray and a global shortcut starts a new recording
 - [ ] Interactive region selection: show a frame of the selected source and let the user draw the rectangle (instead of typing `--region`)
