@@ -1,3 +1,4 @@
+mod cli;
 mod icon;
 mod tray;
 
@@ -11,12 +12,14 @@ use ashpd::desktop::{
     screencast::{CursorMode, Screencast, SourceType},
     PersistMode,
 };
+use clap::Parser;
 use futures_util::StreamExt;
 use gst::prelude::*;
 use gstreamer as gst;
 use ksni::TrayMethods;
 use tokio::sync::mpsc::{self, UnboundedSender};
 
+use cli::{Args, Output};
 use tray::{Command, KaptTray};
 
 /// Application ID registered with the portals (needed by KDE to bind global shortcuts).
@@ -245,8 +248,10 @@ async fn bind_shortcuts(commands: UnboundedSender<Command>) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args = Args::parse();
     gst::init()?;
     check_elements()?;
+    let output = Output::resolve(args.output)?;
 
     // 0. Register kapt with the portals (must come before any other portal call)
     let app_id = APP_ID.parse().context("invalid application ID")?;
@@ -289,43 +294,49 @@ async fn main() -> Result<()> {
     // 2. Get the PipeWire connection provided by the portal
     let fd = proxy.open_pipe_wire_remote(&session).await?;
 
-    // Output file named after the local start time, e.g. 2026-10-18_14-32-05_kapt.mkv
-    // (no ':' so the name stays valid on every filesystem)
-    let output = gst::glib::DateTime::now_local()
-        .and_then(|now| now.format("%Y-%m-%d_%H-%M-%S_kapt.mkv"))
-        .context("cannot build the output file name from the current time")?;
+    // Output file: given with --output, or named after the start time
+    let output = output.file()?;
 
     // 3. Build the GStreamer pipeline: PipeWire -> H.264 -> MKV
-    //    pipewiresrc is named "src" and videocrop "crop" so the probes can find them.
+    //    pipewiresrc is named "src" and videocrop "crop" so the probes can find them;
+    //    filesink is named "sink" to set its location as a property below, so
+    //    the path needs no quoting in this description.
     //    videoconvert would pick 4:4:4 (closest to the RGB screen), which many
     //    players cannot decode: force 4:2:0 (I420) instead. 4:2:0 needs an even
     //    frame size, so videocrop first trims an odd last column/row (set by the
     //    crop probe; a window can have any size).
     //    x264enc defaults to a 2 Mbit/s constant bitrate, far too low for screen
-    //    content: use constant-quality mode instead (pass=qual, quantizer = CRF,
-    //    lower is sharper; 18 is visually near-lossless).
+    //    content: use constant-quality mode instead (pass=qual, quantizer = CRF
+    //    from --quality, lower is sharper; 18 by default, visually near-lossless).
     let pipeline_desc = format!(
         "pipewiresrc name=src fd={fd} path={node_id} do-timestamp=true keepalive-time=1000 resend-last=true \
          ! videocrop name=crop \
          ! videoconvert ! video/x-raw,format=I420 ! queue \
-         ! x264enc tune=zerolatency speed-preset=veryfast pass=qual quantizer=18 \
-         ! h264parse ! matroskamux ! filesink location=\"{output}\"",
+         ! x264enc tune=zerolatency speed-preset={preset} pass=qual quantizer={quality} \
+         ! h264parse ! matroskamux ! filesink name=sink",
         fd = fd.as_raw_fd(),
+        preset = args.preset.as_str(),
+        quality = args.quality,
     );
     let pipeline = gst::parse::launch(&pipeline_desc)?
         .downcast::<gst::Pipeline>()
         .map_err(|_| anyhow!("the root element must be a pipeline"))?;
+    pipeline
+        .by_name("sink")
+        .context("cannot find filesink in the pipeline")?
+        .set_property("location", &output);
     let bus = pipeline.bus().context("pipeline has no bus")?;
 
     let pause_state = Arc::new(Mutex::new(PauseState::default()));
     install_pause_probe(&pipeline, Arc::clone(&pause_state))?;
     install_even_crop_probe(&pipeline)?;
 
+    let shown = output.display();
     pipeline.set_state(gst::State::Playing)?;
-    println!("Recording to {output}… Press Ctrl+C to stop.");
+    println!("Recording to {shown}… Press Ctrl+C to stop.");
 
     // Tray icon showing the recording state; optional as well
-    let tray = match KaptTray::new(output.to_string(), commands).spawn().await {
+    let tray = match KaptTray::new(shown.to_string(), commands).spawn().await {
         Ok(handle) => Some(handle),
         Err(err) => {
             eprintln!("warning: cannot show the tray icon: {err}");
@@ -358,7 +369,7 @@ async fn main() -> Result<()> {
                     if let gst::MessageView::Error(err) = msg.view() {
                         pipeline.set_state(gst::State::Null)?;
                         bail!(
-                            "GStreamer error: {} ({:?})\n{output} may be truncated",
+                            "GStreamer error: {} ({:?})\n{shown} may be truncated",
                             err.error(),
                             err.debug()
                         );
@@ -378,9 +389,9 @@ async fn main() -> Result<()> {
     drop(fd); // keep the PipeWire connection open until here
 
     if finalized {
-        println!("Done: {output}");
+        println!("Done: {shown}");
     } else {
-        eprintln!("warning: the file could not be finalized, {output} may be truncated");
+        eprintln!("warning: the file could not be finalized, {shown} may be truncated");
     }
     Ok(())
 }

@@ -60,11 +60,23 @@ cargo build --release
 ```
 
 1. KDE shows a dialog: pick a screen or a window.
-2. Recording starts into a file named after the start time (e.g. `2026-10-18_14-32-05_kapt.mkv`), in the current directory. A tray icon shows the state: a red square with a white "K" while recording, an orange square with pause bars while paused. Click it to pause/resume, or use its menu to stop.
+2. Recording starts into a file named after the start time (e.g. `2026-10-18_14-32-05_kapt.mkv`), in your videos folder (`~/Videos`, or its localized name such as `~/Vidéos`). A tray icon shows the state: a red square with a white "K" while recording, an orange square with pause bars while paused. Click it to pause/resume, or use its menu to stop.
 3. Press **Meta+Shift+P** (global shortcut, works from any window) to pause or resume: paused parts are cut from the video.
 4. Press **Meta+Shift+X** (global shortcut) or **Ctrl+C** in the terminal to stop.
 
 The first time, KDE asks you to confirm the shortcuts; you can change it later in *System Settings → Keyboard → Shortcuts*.
+
+### Options
+
+| Option | Default | Effect |
+|--------|---------|--------|
+| `-o, --output <PATH>` | videos folder | Output MKV file, or directory in which the file is named after the start time. An existing file is never overwritten. |
+| `-q, --quality <0-51>` | `18` | Constant quality (x264 CRF): lower is sharper but bigger; 18 is visually near-lossless, 23 is x264's default. |
+| `-p, --preset <PRESET>` | `veryfast` | x264 speed preset, from `ultrafast` to `veryslow`: faster presets use less CPU but make bigger files. |
+
+```bash
+kapt -o ~/demo.mkv -q 23 -p fast
+```
 
 If no dialog shows up, check that the portal is running:
 `systemctl --user status xdg-desktop-portal xdg-desktop-portal-kde`.
@@ -76,15 +88,15 @@ Done:
 - [x] Screen or window capture through the ScreenCast portal and PipeWire
 - [x] H.264 encoding in constant-quality mode (CRF 18), 4:2:0 for player compatibility (odd window sizes trimmed by one pixel), MKV output finalized properly
 - [x] Startup check of the required GStreamer elements, with the missing plugins listed
-- [x] Output file named after the start time (`2026-10-18_14-32-05_kapt.mkv`)
+- [x] Output file named after the start time (`2026-10-18_14-32-05_kapt.mkv`), in the XDG videos folder by default
+- [x] Command-line options: `--output`, `--quality` (x264 CRF), `--preset` (x264 speed preset)
 - [x] Pause/resume and stop with global shortcuts (GlobalShortcuts portal), paused parts cut from the video
 - [x] Tray icon showing the state (recording / paused), with pause and stop actions
 
 Planned:
 
 - [ ] Split the code into a desktop-independent core (portal, PipeWire, GStreamer, pause logic) and optional front-ends, to offer a plain command-line kapt for non-KDE environments (GNOME, wlroots…) without the tray icon and with optional global shortcuts
-- [ ] Command-line options (output file, codec, bitrate, FPS)
-- [ ] Quality options: `--quality` (x264 CRF, currently fixed at 18) and `--preset` (x264 speed preset, currently `veryfast`)
+- [ ] More command-line options: codec, bitrate, FPS
 - [ ] Optional 4:4:4 chroma (`video/x-raw,format=Y444`) for sharper colored text, at the cost of player compatibility
 - [ ] Adapt encoding settings to the selected source: read its resolution from the portal stream and pick quality/preset accordingly (e.g. a faster preset for 4K to avoid dropped frames)
 - [ ] KDE notifications (recording started, paused, finished with the file name) via the Notification portal
@@ -93,7 +105,6 @@ Planned:
 - [ ] Remember the selected source (`restore_token`)
 - [ ] QML graphical interface via cxx-qt
 - [ ] Finalize the file properly when the capture is stopped from outside (KDE's "stop sharing" indicator, source window closed) or when a GStreamer error occurs, instead of leaving a truncated MKV (currently only logged)
-- [ ] Save recordings to the XDG videos folder (`~/Videos`) by default instead of the current directory
 - [ ] Show the elapsed recording time (tray tooltip, terminal)
 - [ ] Background mode: kapt stays in the tray and a global shortcut starts a new recording
 - [ ] Optional countdown before recording starts

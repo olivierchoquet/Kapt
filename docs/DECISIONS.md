@@ -7,6 +7,34 @@ this file says *why*.
 Each entry: **Problem**, **Decision**, **Rejected** (alternatives considered),
 **Consequences**, **Commit**. Unsolved problems go to [Open issues](#open-issues).
 
+## 2026-10-22 — Command-line options, recordings saved to the videos folder
+
+**Problem:** the output path, quality and preset were hard-coded, and recordings
+landed in whatever directory kapt was launched from.
+
+**Decision:**
+- `clap` (derive) parses `-o/--output`, `-q/--quality` (x264 CRF, 0-51,
+  default 18) and `-p/--preset` (x264 speed preset, default `veryfast`).
+- `--output` takes a file or a directory; it is checked before the portal
+  dialog opens, so a wrong path fails right away.
+- Without `--output`, the file goes to the XDG videos folder (created if
+  missing), found with `glib::user_special_dir`: it follows the user's
+  `user-dirs.dirs`, so it is localized (`~/Vidéos`). Fallback: the current
+  directory, with a warning.
+- An existing file is never overwritten: kapt refuses to start.
+- The path is set on `filesink` as a property, not written into the pipeline
+  description, so quotes or spaces in it cannot break the parsing.
+
+**Rejected:**
+- The `dirs` crate for the videos folder: glib (already pulled in by
+  GStreamer) does the same.
+- Hard-coding `~/Videos`: wrong on localized desktops.
+
+**Consequences:** the file name is still taken when recording starts (after
+the dialog), not at launch.
+
+**Commit:** see the commit adding this entry
+
 ## 2026-10-22 — Encode in 4:2:0, trim odd frame sizes
 
 **Problem:** recordings came out as H.264 *High 4:4:4 Predictive*: `videoconvert`
