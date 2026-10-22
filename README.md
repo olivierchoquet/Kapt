@@ -74,10 +74,53 @@ The first time, KDE asks you to confirm the shortcuts; you can change it later i
 | `-o, --output <PATH>` | videos folder | Output MKV file, or directory in which the file is named after the start time. An existing file is never overwritten. |
 | `-q, --quality <0-51>` | `18` | Constant quality (x264 CRF): lower is sharper but bigger; 18 is visually near-lossless, 23 is x264's default. |
 | `-p, --preset <PRESET>` | `veryfast` | x264 speed preset, from `ultrafast` to `veryslow`: faster presets use less CPU but make bigger files. |
+| `-r, --region <WxH+X+Y>` | whole source | Record only this part of the selected screen or window (see below). |
+| `-P, --profile <NAME>` | | Use the options saved in this profile; options given on the command line win. |
+| `--save-profile <NAME>` | | Save the options given (and those of `--profile`) as this profile, then record. |
+| `--list-profiles` | | List the saved profiles and exit. |
 
 ```bash
 kapt -o ~/demo.mkv -q 23 -p fast
 ```
+
+### Recording part of a window: `--region`
+
+`--region WIDTHxHEIGHT+X+Y` keeps only a rectangle of the screen or window picked in the KDE dialog, in pixels from its **top-left corner**:
+
+```bash
+kapt --region 1280x720+100+200   # 1280×720 pixels, starting 100 px from the left and 200 px from the top
+```
+
+- Coordinates are relative to the image of the selected source, as a recording without `--region` shows it: for a window, its own top-left corner, not the screen's.
+- Width and height are rounded down to even numbers (4:2:0 encoding needs it).
+- If the region goes beyond the source (e.g. the window was made smaller), kapt records the visible part and prints a warning; if it lies entirely outside, kapt records the whole source.
+
+Tip: to measure a region, take a screenshot of the window with Spectacle and read the coordinates of the area in an image editor (GIMP shows the pointer position at the bottom left).
+
+### Profiles
+
+A profile saves options you use often, region included, under a name:
+
+```bash
+kapt --region 1280x720+100+200 -q 23 -p fast --save-profile demo   # save (and record)
+kapt -P demo                                                         # reuse
+kapt -P demo -q 18                                                   # reuse, with another quality
+kapt --list-profiles
+```
+
+`--save-profile` records right after saving, so you can check the region straight away; if it is not right, run it again with other values: the profile is replaced. Only the options you give are saved, so a profile benefits from future changes of the defaults.
+
+Profiles are stored in `~/.config/kapt/profiles.toml`, which you can also edit by hand (`~/` is allowed in `output`):
+
+```toml
+[profiles.demo]
+region = "1280x720+100+200"
+quality = 23
+preset = "fast"
+output = "~/Videos/demos"
+```
+
+Saving a profile with `--save-profile` rewrites the file: comments added by hand are lost.
 
 If no dialog shows up, check that the portal is running:
 `systemctl --user status xdg-desktop-portal xdg-desktop-portal-kde`.
@@ -93,6 +136,7 @@ Done:
 - [x] Startup check of the required GStreamer elements, with the missing plugins listed
 - [x] Output file named after the start time (`2026-10-18_14-32-05_kapt.mkv`), in the XDG videos folder by default
 - [x] Command-line options: `--output`, `--quality` (x264 CRF), `--preset` (x264 speed preset)
+- [x] Capture region inside the selected window or screen (`--region`), and named profiles to reuse options
 - [x] Pause/resume and stop with global shortcuts (GlobalShortcuts portal), paused parts cut from the video
 - [x] Tray icon showing the state (recording / paused), with pause and stop actions
 
@@ -109,7 +153,9 @@ Planned:
 - [ ] Finalize the file properly when the capture is stopped from outside (KDE's "stop sharing" indicator, source window closed) or when a GStreamer error occurs, instead of leaving a truncated MKV (currently only logged)
 - [ ] Show the elapsed recording time (tray tooltip, terminal)
 - [ ] Background mode: kapt stays in the tray and a global shortcut starts a new recording
-- [ ] Multi-monitor capture and region selection (crop)
+- [ ] Interactive region selection: show a frame of the selected source and let the user draw the rectangle (instead of typing `--region`)
+- [ ] Remember the selected source in a profile (`restore_token`), so `kapt -P demo` skips the KDE dialog
+- [ ] Multi-monitor capture
 - [ ] Direct MP4 output: `mp4mux fragment-duration=1000 fragment-mode=first-moov-then-finalise` writes fragments while recording (readable if interrupted) and rewrites a standard MP4 on EOS; the EOS wait (currently 5 s) must be raised for long recordings
 - [ ] Other output formats: WebM/AV1, GIF for short clips
 - [ ] Desktop file, AppStream metadata and application icon, so KDE shows "kapt" by name in the shortcut and sharing dialogs

@@ -1,6 +1,8 @@
 mod cli;
 mod icon;
 mod pause;
+mod profile;
+mod region;
 mod tray;
 
 use std::os::fd::AsRawFd;
@@ -23,6 +25,7 @@ use tokio::sync::mpsc::{self, UnboundedSender};
 
 use cli::{Args, Output};
 use pause::{PauseState, Toggle};
+use region::{Crop, Region};
 use tray::{Command, KaptTray};
 
 /// Application ID registered with the portals (needed by KDE to bind global shortcuts).
@@ -107,12 +110,12 @@ fn install_pause_probe(pipeline: &gst::Pipeline, state: Arc<Mutex<PauseState>>) 
 
 /// Installs a probe on the source pad that handles the frame size, announced
 /// by the source in a caps event, and again each time a captured window is resized:
-/// - every size is made even, which 4:2:0 encoding requires (one chroma sample
-///   per 2×2 pixels): the crop element removes the odd last column and/or row;
-/// - the first (even) size becomes the size of the whole video: later sizes are
-///   scaled to fit it, with black borders, as many players handle a size change
-///   in the middle of a file badly.
-fn install_size_probe(pipeline: &gst::Pipeline) -> Result<()> {
+/// - the crop element keeps `region` (the whole frame if `None`), clamped to the
+///   frame, with an even size as 4:2:0 encoding requires (see `Crop::new`);
+/// - the first cropped size becomes the size of the whole video: later sizes
+///   are scaled to fit it, with black borders, as many players handle a size
+///   change in the middle of a file badly.
+fn install_size_probe(pipeline: &gst::Pipeline, region: Option<Region>) -> Result<()> {
     let pad = pipeline
         .by_name("src")
         .and_then(|src| src.static_pad("src"))
@@ -133,21 +136,44 @@ fn install_size_probe(pipeline: &gst::Pipeline) -> Result<()> {
             return gst::PadProbeReturn::Ok;
         };
         let (Ok(width), Ok(height)) = (
-            structure.get::<i32>("width"),
-            structure.get::<i32>("height"),
+            structure.get::<i32>("width").map(i32::unsigned_abs),
+            structure.get::<i32>("height").map(i32::unsigned_abs),
         ) else {
             return gst::PadProbeReturn::Ok;
         };
-        // Set before the caps event reaches videocrop, so it applies to this size
-        crop.set_property("right", width % 2);
-        crop.set_property("bottom", height % 2);
+
+        let full = Region::full(width, height);
+        let kept = match region.map(|region| (region, region.clamp(width, height))) {
+            None => full,
+            Some((region, Some(clamped))) => {
+                if clamped != region {
+                    eprintln!(
+                        "warning: region {region} goes beyond the {width}x{height} source, recording {clamped}"
+                    );
+                }
+                clamped
+            }
+            Some((region, None)) => {
+                eprintln!(
+                    "warning: region {region} is outside the {width}x{height} source, recording all of it"
+                );
+                full
+            }
+        };
+        let cropped = Crop::new(width, height, kept);
+        // Set before the caps event reaches videocrop, so it applies to this size.
+        // Values come from i32 caps fields, so they fit back in an i32.
+        crop.set_property("left", cropped.left as i32);
+        crop.set_property("top", cropped.top as i32);
+        crop.set_property("right", cropped.right as i32);
+        crop.set_property("bottom", cropped.bottom as i32);
 
         if !size_fixed.swap(true, Ordering::SeqCst) {
             // Square pixels, so videoscale adds borders instead of stretching
             let caps = gst::Caps::builder("video/x-raw")
                 .field("format", "I420")
-                .field("width", width - width % 2)
-                .field("height", height - height % 2)
+                .field("width", cropped.width as i32)
+                .field("height", cropped.height as i32)
                 .field("pixel-aspect-ratio", gst::Fraction::new(1, 1))
                 .build();
             size.set_property("caps", &caps);
@@ -250,9 +276,13 @@ async fn bind_shortcuts(commands: UnboundedSender<Command>) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
+    if args.list_profiles {
+        return cli::list_profiles();
+    }
+    let settings = args.settings()?;
     gst::init()?;
     check_elements()?;
-    let output = Output::resolve(args.output)?;
+    let output = Output::resolve(settings.output)?;
 
     // 0. Register kapt with the portals (must come before any other portal call)
     let app_id = APP_ID.parse().context("invalid application ID")?;
@@ -306,7 +336,7 @@ async fn main() -> Result<()> {
     //    videoconvert would pick 4:4:4 (closest to the RGB screen), which many
     //    players cannot decode: force 4:2:0 (I420) instead. 4:2:0 needs an even
     //    frame size, so videocrop first trims an odd last column/row (a window
-    //    can have any size).
+    //    can have any size); with --region, it also keeps only that region.
     //    The video keeps the size of the first frame: if a captured window is
     //    resized, videoscale fits the new frames into it, keeping their aspect
     //    ratio with black borders. Both are set by the size probe; the caps
@@ -322,8 +352,8 @@ async fn main() -> Result<()> {
          ! x264enc tune=zerolatency speed-preset={preset} pass=qual quantizer={quality} \
          ! h264parse ! matroskamux ! filesink name=sink",
         fd = fd.as_raw_fd(),
-        preset = args.preset.as_str(),
-        quality = args.quality,
+        preset = settings.preset.as_str(),
+        quality = settings.quality,
     );
     let pipeline = gst::parse::launch(&pipeline_desc)?
         .downcast::<gst::Pipeline>()
@@ -336,7 +366,7 @@ async fn main() -> Result<()> {
 
     let pause_state = Arc::new(Mutex::new(PauseState::default()));
     install_pause_probe(&pipeline, Arc::clone(&pause_state))?;
-    install_size_probe(&pipeline)?;
+    install_size_probe(&pipeline, settings.region)?;
 
     let shown = output.display();
     pipeline.set_state(gst::State::Playing)?;

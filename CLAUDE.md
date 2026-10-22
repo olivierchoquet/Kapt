@@ -13,6 +13,8 @@ Réponds en français. Le code (identifiants, commentaires, messages affichés) 
 - `gstreamer` 0.23 : pipeline de capture et d'encodage
 - `tokio` : runtime asynchrone
 - `anyhow` : gestion des erreurs
+- `clap` : options de la ligne de commande
+- `serde` + `toml` : fichier des profils (`~/.config/kapt/profiles.toml`)
 
 Ne mets pas à jour `ashpd` ni `gstreamer` vers une version majeure plus récente sans me le demander : leurs API ont changé.
 

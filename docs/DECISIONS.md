@@ -7,6 +7,40 @@ this file says *why*.
 Each entry: **Problem**, **Decision**, **Rejected** (alternatives considered),
 **Consequences**, **Commit**. Unsolved problems go to [Open issues](#open-issues).
 
+## 2026-10-22 — Capture region (`--region`) and profiles
+
+**Problem:** users want to record only part of a window, and to reuse the
+region (and other options) they use often.
+
+**Decision:**
+- `--region WxH+X+Y` (X11 geometry notation: no space, so no quoting), in
+  pixels of the source picked in the portal dialog. Applied by `videocrop`,
+  set by the size probe; the logic is pure (`src/region.rs`) and tested.
+  A region going beyond the source (window made smaller) is clamped with a
+  warning; one entirely outside falls back to the whole source.
+- Profiles in `$XDG_CONFIG_HOME/kapt/profiles.toml` (TOML, `serde`):
+  `-P/--profile NAME` uses one, command-line options win;
+  `--save-profile NAME` saves the options given then records (to check the
+  region right away); `--list-profiles`. Only options given explicitly are
+  saved, so profiles follow changes of the defaults. Unknown keys are refused
+  (`deny_unknown_fields`), so a typo is not silently ignored. The file is only
+  read when a profile option is used.
+
+**Rejected:**
+- An interactive selector drawn over the desktop (like Spectacle): Wayland
+  does not tell an application where windows are, so a rectangle drawn on the
+  screen cannot be turned into coordinates inside the captured window.
+- Doing the interactive selector first: `--region` is the base it will build
+  on, and is useful in scripts. The selector (drawing on a frame of the
+  source) stays on the roadmap; GUI toolkit not chosen yet (egui vs QML).
+- `toml_edit` to keep hand-written comments when saving: more code for a
+  small benefit; the README warns that saving rewrites the file.
+
+**Consequences:** users must measure the region (tip in the README:
+screenshot + image editor). New dependencies: `serde`, `toml`.
+
+**Commit:** see the commit adding this entry
+
 ## 2026-10-22 — No countdown before recording
 
 **Problem:** the roadmap planned an optional countdown before recording starts.
