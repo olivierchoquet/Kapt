@@ -11,13 +11,14 @@ Command-line screen recorder for Linux, designed primarily for **KDE Plasma** on
 3. A **GStreamer** pipeline turns that stream into an H.264 MKV file:
 
 ```
-pipewiresrc → videocrop → videoconvert → queue → x264enc → h264parse → matroskamux → filesink
+pipewiresrc → videocrop → videoscale → videoconvert → queue → x264enc → h264parse → matroskamux → filesink
 ```
 
 | Element        | Role                                                         | Ubuntu package            |
 |----------------|--------------------------------------------------------------|---------------------------|
 | `pipewiresrc`  | connects to the PipeWire stream and receives raw frames      | `gstreamer1.0-pipewire`   |
 | `videocrop`    | trims an odd last column/row: 4:2:0 needs an even frame size | `gstreamer1.0-plugins-good` |
+| `videoscale`   | keeps the video at the size of its first frame: if a captured window is resized, fits the new frames in, with black borders | `gstreamer1.0-plugins-base` |
 | `videoconvert` | converts the pixel format (RGB from the screen → YUV 4:2:0, readable by every player) | `gstreamer1.0-plugins-base` |
 | `queue`        | buffer, so capture never waits for the encoder               | core                      |
 | `x264enc`      | compresses frames to H.264 (constant quality, CRF 18)        | `gstreamer1.0-plugins-ugly` |
@@ -86,6 +87,7 @@ If no dialog shows up, check that the portal is running:
 Done:
 
 - [x] Screen or window capture through the ScreenCast portal and PipeWire
+- [x] Constant video size: a captured window resized while recording is scaled to fit, with black borders
 - [x] H.264 encoding in constant-quality mode (CRF 18), 4:2:0 for player compatibility (odd window sizes trimmed by one pixel), MKV output finalized properly
 - [x] Startup check of the required GStreamer elements, with the missing plugins listed
 - [x] Output file named after the start time (`2026-10-18_14-32-05_kapt.mkv`), in the XDG videos folder by default

@@ -7,6 +7,28 @@ this file says *why*.
 Each entry: **Problem**, **Decision**, **Rejected** (alternatives considered),
 **Consequences**, **Commit**. Unsolved problems go to [Open issues](#open-issues).
 
+## 2026-10-22 — Keep the video size fixed during a recording
+
+**Problem:** resizing a captured window changes the frame size in the middle
+of the file, which many players and editors handle badly.
+
+**Decision:** the video keeps the size of its first frame (made even). Later
+frames go through `videoscale add-borders=true`, which fits them into that size
+while keeping their aspect ratio, with black borders. The size probe sets the
+output caps (`width`, `height`, `pixel-aspect-ratio=1/1` so videoscale adds
+borders instead of stretching) on the first caps event. While the size does
+not change, videoscale does nothing, so the image stays sharp.
+
+**Rejected:**
+- Letting the size change in the file: the problem itself.
+- Placing frames unscaled on a fixed canvas (cropped if bigger): a window
+  that grows would be cut off.
+
+**Consequences:** a window enlarged after the start is scaled down (slightly
+blurrier text); one made smaller gets black borders.
+
+**Commit:** see the commit adding this entry
+
 ## 2026-10-22 — Command-line options, recordings saved to the videos folder
 
 **Problem:** the output path, quality and preset were hard-coded, and recordings

@@ -3,6 +3,7 @@ mod icon;
 mod tray;
 
 use std::os::fd::AsRawFd;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -42,6 +43,7 @@ const REQUIRED_ELEMENTS: &[(&str, &str)] = &[
         "the PipeWire plugin (gstreamer1.0-pipewire / gst-plugin-pipewire)",
     ),
     ("videocrop", "gst-plugins-good"),
+    ("videoscale", "gst-plugins-base"),
     ("videoconvert", "gst-plugins-base"),
     ("x264enc", "gst-plugins-ugly"),
     ("h264parse", "gst-plugins-bad"),
@@ -117,11 +119,14 @@ fn install_pause_probe(pipeline: &gst::Pipeline, state: Arc<Mutex<PauseState>>) 
     Ok(())
 }
 
-/// Installs a probe on the source pad that keeps the frame size even, which
-/// 4:2:0 encoding requires (one chroma sample per 2×2 pixels): when the source
-/// announces its size, the crop element removes the odd last column and/or row.
-/// The size changes when a captured window is resized, so every new size is handled.
-fn install_even_crop_probe(pipeline: &gst::Pipeline) -> Result<()> {
+/// Installs a probe on the source pad that handles the frame size, announced
+/// by the source in a caps event, and again each time a captured window is resized:
+/// - every size is made even, which 4:2:0 encoding requires (one chroma sample
+///   per 2×2 pixels): the crop element removes the odd last column and/or row;
+/// - the first (even) size becomes the size of the whole video: later sizes are
+///   scaled to fit it, with black borders, as many players handle a size change
+///   in the middle of a file badly.
+fn install_size_probe(pipeline: &gst::Pipeline) -> Result<()> {
     let pad = pipeline
         .by_name("src")
         .and_then(|src| src.static_pad("src"))
@@ -129,6 +134,10 @@ fn install_even_crop_probe(pipeline: &gst::Pipeline) -> Result<()> {
     let crop = pipeline
         .by_name("crop")
         .context("cannot find videocrop in the pipeline")?;
+    let size = pipeline
+        .by_name("size")
+        .context("cannot find the output size filter in the pipeline")?;
+    let size_fixed = AtomicBool::new(false);
 
     pad.add_probe(gst::PadProbeType::EVENT_DOWNSTREAM, move |_, info| {
         let Some(gst::EventView::Caps(caps)) = info.event().map(|event| event.view()) else {
@@ -146,6 +155,17 @@ fn install_even_crop_probe(pipeline: &gst::Pipeline) -> Result<()> {
         // Set before the caps event reaches videocrop, so it applies to this size
         crop.set_property("right", width % 2);
         crop.set_property("bottom", height % 2);
+
+        if !size_fixed.swap(true, Ordering::SeqCst) {
+            // Square pixels, so videoscale adds borders instead of stretching
+            let caps = gst::Caps::builder("video/x-raw")
+                .field("format", "I420")
+                .field("width", width - width % 2)
+                .field("height", height - height % 2)
+                .field("pixel-aspect-ratio", gst::Fraction::new(1, 1))
+                .build();
+            size.set_property("caps", &caps);
+        }
         gst::PadProbeReturn::Ok
     });
     Ok(())
@@ -298,20 +318,26 @@ async fn main() -> Result<()> {
     let output = output.file()?;
 
     // 3. Build the GStreamer pipeline: PipeWire -> H.264 -> MKV
-    //    pipewiresrc is named "src" and videocrop "crop" so the probes can find them;
+    //    pipewiresrc ("src"), videocrop ("crop") and the output caps filter ("size")
+    //    are named so the probes can find them;
     //    filesink is named "sink" to set its location as a property below, so
     //    the path needs no quoting in this description.
     //    videoconvert would pick 4:4:4 (closest to the RGB screen), which many
     //    players cannot decode: force 4:2:0 (I420) instead. 4:2:0 needs an even
-    //    frame size, so videocrop first trims an odd last column/row (set by the
-    //    crop probe; a window can have any size).
+    //    frame size, so videocrop first trims an odd last column/row (a window
+    //    can have any size).
+    //    The video keeps the size of the first frame: if a captured window is
+    //    resized, videoscale fits the new frames into it, keeping their aspect
+    //    ratio with black borders. Both are set by the size probe; the caps
+    //    filter only fixes the format until the first frame size is known.
     //    x264enc defaults to a 2 Mbit/s constant bitrate, far too low for screen
     //    content: use constant-quality mode instead (pass=qual, quantizer = CRF
     //    from --quality, lower is sharper; 18 by default, visually near-lossless).
     let pipeline_desc = format!(
         "pipewiresrc name=src fd={fd} path={node_id} do-timestamp=true keepalive-time=1000 resend-last=true \
          ! videocrop name=crop \
-         ! videoconvert ! video/x-raw,format=I420 ! queue \
+         ! videoscale add-borders=true \
+         ! videoconvert ! capsfilter name=size caps=video/x-raw,format=I420 ! queue \
          ! x264enc tune=zerolatency speed-preset={preset} pass=qual quantizer={quality} \
          ! h264parse ! matroskamux ! filesink name=sink",
         fd = fd.as_raw_fd(),
@@ -329,7 +355,7 @@ async fn main() -> Result<()> {
 
     let pause_state = Arc::new(Mutex::new(PauseState::default()));
     install_pause_probe(&pipeline, Arc::clone(&pause_state))?;
-    install_even_crop_probe(&pipeline)?;
+    install_size_probe(&pipeline)?;
 
     let shown = output.display();
     pipeline.set_state(gst::State::Playing)?;
